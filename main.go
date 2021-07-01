@@ -10,17 +10,28 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"time"
 )
 
 func main() {
+	var wg sync.WaitGroup
+	// Rate limits
 	sm := make(chan struct{}, 3) //Semaphore, available only 3 goroutines
+	sm2 := make(chan struct{}, 3) //Semaphore, available only 3 goroutines
 	ctx, cancel := context.WithCancel(context.Background())
+	wg.Add(1)
 	sm <- struct{}{}
+	sm2 <- struct{}{}
 	go handleSignals(cancel, &sm)
-	if err := startServer(ctx); err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		defer func() { <-sm2 }()
+		defer wg.Done()
+		if err := startServer(ctx); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	wg.Wait()
 }
 
 func handleSignals(cancel context.CancelFunc,  sm *chan struct{}) {
@@ -85,7 +96,7 @@ func handle(con net.Conn) {
 		fmt.Println(err)
 		return
 	}
-	time.Sleep(time.Second*5) // It is needed to check is it really Graceful Shutdown or not :)
+	//time.Sleep(time.Second*5) // It is needed to check is it really Graceful Shutdown or not :)
 	io.WriteString(con, fmt.Sprintf("Square of %d is %d\n", num, num * num)) //stdout
 }
 
